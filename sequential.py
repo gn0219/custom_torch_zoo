@@ -1,4 +1,118 @@
 
+# DNN
+class DNN(nn.Module):
+    def __init__(self):
+        super(DNN, self).__init__()
+        self.seq_module = nn.Sequential(
+            nn.LazyLinear(128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1), # disable for decision level fusion
+            nn.Sigmoid()
+        )
+        # self.initialize_weights()
+
+    def forward(self, x):
+        x = self.seq_module(x)
+        return x
+
+# CNN1d
+class CNN1d(nn.Module):
+    def __init__(self):
+        super(CNN1d, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv1d(1, 8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(8),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(16),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.AdaptiveAvgPool1d(7)
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(448, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = self.encoder(x)
+
+        x = x.view(x.size(0), -1)  # Reshape to flatten
+        x = self.classifier(x)
+        return x
+
+# CNN1dcat - mfcc, mel-spectrogram, chromagram
+class CNN1dCat(nn.Module):
+    def __init__(self):
+        super(CNN1dCat, self).__init__()
+        self.features_c = self._make_layers()
+        self.features_ms = self._make_layers()
+        self.features_mfcc = self._make_layers()
+
+        self.classifier = nn.Sequential(
+            nn.Linear(448 * 3, 64),  # Updated input size based on the concatenated features
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+    def _make_layers(self):
+        layers = nn.Sequential(
+            nn.Conv1d(1, 8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(8),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(16),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.AdaptiveAvgPool1d(7)
+        )
+        return layers
+
+    def forward(self, x):
+        x_c = x[:, [i for i in range(12)]].unsqueeze(1)
+        x_ms = x[:, [i for i in range(12, 140)]].unsqueeze(1)
+        x_mfcc = x[:, [i for i in range(140, 180)]].unsqueeze(1)
+        x_c = self.features_c(x_c)
+        x_ms = self.features_ms(x_ms)
+        x_mfcc = self.features_mfcc(x_mfcc)
+
+        x_c = x_c.view(x_c.size(0), -1)  # Reshape to flatten
+        x_ms = x_ms.view(x_ms.size(0), -1)
+        x_mfcc = x_mfcc.view(x_mfcc.size(0), -1)
+        
+        x = torch.cat((x_c, x_ms, x_mfcc), dim=1)  # Concatenate features along the channel dimension
+        x = self.classifier(x)
+        return x
+
 # SimpleDNN
 class SimpleDNN(nn.Module):
     def __init__(self, target_N=20, n_of_features=3):
