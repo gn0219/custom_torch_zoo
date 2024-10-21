@@ -8,7 +8,7 @@ class DNN(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1), # disable for decision level fusion
+            nn.Linear(64, 1),
             nn.Sigmoid()
         )
         # self.initialize_weights()
@@ -17,99 +17,27 @@ class DNN(nn.Module):
         x = self.seq_module(x)
         return x
 
-# CNN1d
-class CNN1d(nn.Module):
+class DNN_medium(nn.Module):
     def __init__(self):
-        super(CNN1d, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv1d(1, 8, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(8),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(8, 16, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(16),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            nn.AdaptiveAvgPool1d(7)
-        )
+        super(DNN_medium, self).__init__()
         self.classifier = nn.Sequential(
-            nn.Linear(448, 64),
+            nn.LazyBatchNorm1d(),
+            nn.LazyLinear(512),
             nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(64, 32),
+            nn.BatchNorm1d(512),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(32, 1),
+            nn.BatchNorm1d(256),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.Linear(64, 1),
             nn.Sigmoid()
         )
 
-
     def forward(self, x):
-        x = x.unsqueeze(1)
-        x = self.encoder(x)
-
-        x = x.view(x.size(0), -1)  # Reshape to flatten
-        x = self.classifier(x)
-        return x
-
-# CNN1dcat - mfcc, mel-spectrogram, chromagram
-class CNN1dCat(nn.Module):
-    def __init__(self):
-        super(CNN1dCat, self).__init__()
-        self.features_c = self._make_layers()
-        self.features_ms = self._make_layers()
-        self.features_mfcc = self._make_layers()
-
-        self.classifier = nn.Sequential(
-            nn.Linear(448 * 3, 64),  # Updated input size based on the concatenated features
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
-        )
-
-    def _make_layers(self):
-        layers = nn.Sequential(
-            nn.Conv1d(1, 8, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(8),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(8, 16, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(16),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            nn.AdaptiveAvgPool1d(7)
-        )
-        return layers
-
-    def forward(self, x):
-        x_c = x[:, [i for i in range(12)]].unsqueeze(1)
-        x_ms = x[:, [i for i in range(12, 140)]].unsqueeze(1)
-        x_mfcc = x[:, [i for i in range(140, 180)]].unsqueeze(1)
-        x_c = self.features_c(x_c)
-        x_ms = self.features_ms(x_ms)
-        x_mfcc = self.features_mfcc(x_mfcc)
-
-        x_c = x_c.view(x_c.size(0), -1)  # Reshape to flatten
-        x_ms = x_ms.view(x_ms.size(0), -1)
-        x_mfcc = x_mfcc.view(x_mfcc.size(0), -1)
-        
-        x = torch.cat((x_c, x_ms, x_mfcc), dim=1)  # Concatenate features along the channel dimension
         x = self.classifier(x)
         return x
 
@@ -136,7 +64,6 @@ class SimpleDNN(nn.Module):
         x = self.seq_module(x)
         return x
 
-# Baseline(DNN) See section 3. DNN Model Building
 class Baseline(nn.Module):
     def __init__(self, target_N=20, n_of_features=3):
         super(Baseline, self).__init__()
@@ -161,7 +88,6 @@ class Baseline(nn.Module):
         self.initialize_weights()
 
     def forward(self, x):
-        # Write your code here
         x = self.flatten(x)
         x = self.seq_module(x)
         return x
@@ -175,6 +101,121 @@ class Baseline(nn.Module):
         elif isinstance(m, nn.BatchNorm1d):
           nn.init.constant_(m.weight.data, 1)
           nn.init.constant_(m.bias.data, 0)
+
+# CNN1d
+
+def make_cnn_layers():
+        layers = nn.Sequential(
+            nn.Conv1d(1, 8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(8),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(16),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.AdaptiveAvgPool1d(7)
+        )
+        return layers
+
+class CNN1d(nn.Module):
+    def __init__(self):
+        super(CNN1d, self).__init__()
+        self.encoder = make_cnn_layers()
+        self.classifier = nn.Sequential(
+            nn.Linear(448, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = self.encoder(x)
+
+        x = x.view(x.size(0), -1)  # Reshape to flatten
+        x = self.classifier(x)
+        return x
+
+class CNN1dCat(nn.Module):
+    def __init__(self):
+        super(CNN1dCat, self).__init__()
+        self.features_c = make_cnn_layers()
+        self.features_ms = make_cnn_layers()
+        self.features_mfcc = make_cnn_layers()
+
+        self.classifier = nn.Sequential(
+            nn.Linear(448 * 3, 64),  # Updated input size based on the concatenated features
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x_c = x[:, [i for i in range(12)]].unsqueeze(1)
+        x_ms = x[:, [i for i in range(12, 140)]].unsqueeze(1)
+        x_mfcc = x[:, [i for i in range(140, 180)]].unsqueeze(1)
+        x_c = self.features_c(x_c)
+        x_ms = self.features_ms(x_ms)
+        x_mfcc = self.features_mfcc(x_mfcc)
+
+        x_c = x_c.view(x_c.size(0), -1)  # Reshape to flatten
+        x_ms = x_ms.view(x_ms.size(0), -1)
+        x_mfcc = x_mfcc.view(x_mfcc.size(0), -1)
+        
+        x = torch.cat((x_c, x_ms, x_mfcc), dim=1)  # Concatenate features along the channel dimension
+        x = self.classifier(x)
+        return x
+
+class CNN1dAttn(nn.Module):
+    def __init__(self, num_heads=4, attention_dim=64):
+        super(CNN1dAttn, self).__init__()
+        self.encoder = make_cnn_layers()
+        
+        self.attention = nn.MultiheadAttention(embed_dim=attention_dim, num_heads=num_heads, batch_first=True)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(448, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = self.encoder(x)
+        
+        # Prepare for attention layer
+        x = x.permute(0, 2, 1)  # Change shape to (batch_size, seq_length, feature_dim)
+        
+        # Apply attention
+        attn_output, _ = self.attention(x, x, x)
+        
+        # Flatten the attention output
+        attn_output = attn_output.permute(0, 2, 1).contiguous()
+        attn_output = attn_output.view(attn_output.size(0), -1)
+        
+        # Classifier
+        x = self.classifier(attn_output)
+        return x
 
 # ConvLSTM model
 class ConvLSTM(nn.Module):
@@ -295,5 +336,148 @@ class CNNBiLSTM3b(nn.Module):
         x, _ = self.bilstm2(x)
         x = x.squeeze()
         x = self.dropout(x)
+        x = self.classifier(x)
+        return x
+
+# ResNet
+class Bottleneck(nn.Module):
+    def __init__(self, in_channels, mid_channels, out_channels, downsample=False):
+        super(Bottleneck, self).__init__()
+        self.stride = 2 if downsample else 1
+
+        self.layer = nn.Sequential(
+            nn.LazyConv1d(mid_channels, kernel_size=1, stride=self.stride),
+            nn.LazyBatchNorm1d(),
+            nn.ReLU(),
+            nn.LazyConv1d(mid_channels, kernel_size=3, padding=1),
+            nn.LazyBatchNorm1d(),
+            nn.ReLU(),
+            nn.LazyConv1d(out_channels, kernel_size=1),
+            nn.LazyBatchNorm1d(),
+            nn.ReLU()
+        )
+
+        if in_channels != out_channels or downsample:
+            self.res_layer = nn.LazyConv1d(out_channels, kernel_size=1, stride=self.stride)
+            self.res_bn = nn.LazyBatchNorm1d()
+        else:
+            self.res_layer = None
+
+    def forward(self, x):
+        if self.res_layer is not None:
+            residual = self.res_bn(self.res_layer(x))
+        else:
+            residual = x
+        return self.layer(x) + residual
+
+
+class ResNet50(nn.Module):
+    def __init__(self):
+        super(ResNet50, self).__init__()
+        self.features = nn.Sequential(
+            nn.LazyConv1d(64, kernel_size=7, stride=2, padding=3),
+            nn.LazyBatchNorm1d(),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+
+            Bottleneck(64, 64, 256, downsample=False),
+            Bottleneck(256, 64, 256, downsample=False),
+            Bottleneck(256, 64, 256, downsample=False),
+            
+            Bottleneck(256, 128, 512, downsample=True),
+            Bottleneck(512, 128, 512, downsample=False),
+            Bottleneck(512, 128, 512, downsample=False),
+            Bottleneck(512, 128, 512, downsample=False),
+            
+            Bottleneck(512, 256, 1024, downsample=True),
+            Bottleneck(1024, 256, 1024, downsample=False),
+            Bottleneck(1024, 256, 1024, downsample=False),
+            Bottleneck(1024, 256, 1024, downsample=False),
+            Bottleneck(1024, 256, 1024, downsample=False),
+            Bottleneck(1024, 256, 1024, downsample=False),
+            
+            Bottleneck(1024, 512, 2048, downsample=True),
+            Bottleneck(2048, 512, 2048, downsample=False),
+            Bottleneck(2048, 512, 2048, downsample=False),
+
+            nn.AdaptiveAvgPool1d(1)
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(2048, 512),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(512, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = self.features(x)
+        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = self.classifier(x)
+        return x
+
+
+
+
+class FusionModel(nn.Module):
+    def __init__(self, model1, model2):
+        super(FusionModel, self).__init__()
+
+        # 각 모델의 마지막 Linear, Sigmoid 층 제거
+        model1.classifier = nn.Sequential(*list(model1.classifier.children())[:-2])
+        model2.classifier = nn.Sequential(*list(model2.classifier.children())[:-2])
+        self.model1 = model1
+        self.model2 = model2
+
+        self.classifier = nn.Sequential(
+            nn.LazyLinear(32),
+            nn.ReLU(),
+            nn.BatchNorm1d(32),
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        x_other = x[:, :-182]
+        x_voice = x[:, -182:]
+        x_other = self.model1(x_other)
+        x_voice = self.model2(x_voice)
+        x = torch.cat((x_other, x_voice), dim=1)
+        x = self.classifier(x)
+        return x
+    
+class FusionPhoneWearable(FusionModel):
+    def __init__(self, model1, model2):
+        super(FusionPhoneWearable, self).__init__(model1, model2)
+    def forward(self, x):
+        x_phone = x[:, :-9]
+        x_wearable = x[:, -9:]
+        x_phone = self.model1(x_phone)
+        x_wearable = self.model2(x_wearable)
+        x = torch.cat((x_phone, x_wearable), dim=1)
+        x = self.classifier(x)
+        return x
+
+class FusionSWIoTVoice(FusionModel):
+    def __init__(self, model1, model2, model3):
+        super(FusionSWIoTVoice, self).__init__(model1, model2)
+        
+        model3.classifier = nn.Sequential(*list(model3.classifier.children())[:-2])
+        self.model3 = model3
+        
+    def forward(self, x):
+        x_sw = x[:, :-342]
+        x_iot = x[:, -342:-182]
+        x_voice = x[:, -182:]
+
+        x_sw = self.model1(x_sw)
+        x_iot = self.model2(x_iot)
+        x_voice = self.model3(x_voice)
+
+        x = torch.cat((x_sw, x_iot, x_voice), dim=1)
         x = self.classifier(x)
         return x
