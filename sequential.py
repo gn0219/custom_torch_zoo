@@ -449,35 +449,45 @@ class FusionModel(nn.Module):
         x = torch.cat((x_other, x_voice), dim=1)
         x = self.classifier(x)
         return x
-    
-class FusionPhoneWearable(FusionModel):
-    def __init__(self, model1, model2):
-        super(FusionPhoneWearable, self).__init__(model1, model2)
+
+
+class FusionBase(nn.Module):
+    def __init__(self, models, input_slices):
+        super(FusionBase, self).__init__()
+        self.models = nn.ModuleList(models)
+        self.input_slices = input_slices
+
+        # Removing the last Linear and Sigmoid layers from each model
+        for model in self.models:
+            model.classifier = nn.Sequential(*list(model.classifier.children())[:-2])
+
+        self.classifier = nn.Sequential(
+            nn.LazyLinear(32),
+            nn.ReLU(),
+            nn.BatchNorm1d(32),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
     def forward(self, x):
-        x_phone = x[:, :-9]
-        x_wearable = x[:, -9:]
-        x_phone = self.model1(x_phone)
-        x_wearable = self.model2(x_wearable)
-        x = torch.cat((x_phone, x_wearable), dim=1)
+        outputs = []
+        for model, slice_ in zip(self.models, self.input_slices):
+            x_input = x[:, slice_]
+            output = model(x_input)
+            outputs.append(output)
+        
+        x = torch.cat(outputs, dim=1)
         x = self.classifier(x)
         return x
 
-class FusionSWIoTVoice(FusionModel):
-    def __init__(self, model1, model2, model3):
-        super(FusionSWIoTVoice, self).__init__(model1, model2)
-        
-        model3.classifier = nn.Sequential(*list(model3.classifier.children())[:-2])
-        self.model3 = model3
-        
-    def forward(self, x):
-        x_sw = x[:, :-342]
-        x_iot = x[:, -342:-182]
-        x_voice = x[:, -182:]
+model1, model2, model3, model4 = DNN_small(), DNN_small(), DNN_small(), DNN_small()
 
-        x_sw = self.model1(x_sw)
-        x_iot = self.model2(x_iot)
-        x_voice = self.model3(x_voice)
+fusion_other_voice = FusionBase(
+    models=[model1, model2],
+    input_slices=[slice(None, -182), slice(-182, None)]
+)
 
-        x = torch.cat((x_sw, x_iot, x_voice), dim=1)
-        x = self.classifier(x)
-        return x
+fusion_s_w_iot_voice = FusionBase(
+    models=[model1, model2, model3, model4],
+    input_slices=[slice(None, -351), slice(-351, -342), slice(-342, -182), slice(-182, None)]
+)
